@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Contrail Impact Predictor</title>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0b1117;
+    --bg2: #17222e;
+    --ink: #e6edf4;
+    --ink2: #b8c3cf;
+    --ink3: #5d738a;
+    --high: #c96b3b;
+    --med: #d2a14d;
+    --low: #5e9b93;
+    --high-light: #fce8e4;
+    --med-light: #fdf0e0;
+    --low-light: #e4f2ea;
+    --white: #faf8f5;
+    --sans: 'Sora', sans-serif;
+    --mono: 'JetBrains Mono', monospace;
+  }
+
+  html, body { background: var(--bg); color: var(--ink); font-family: var(--sans); min-height: 100vh; }
+  body { opacity: 0; animation: fadeIn 0.6s ease forwards; }
+  @keyframes fadeIn { to { opacity: 1; } }
+
+body::before {
+content:'';
+position:fixed;
+inset:0;
+pointer-events:none;
+background:
+radial-gradient(circle at 20% 20%, rgba(255,255,255,0.05), transparent 30%),
+radial-gradient(circle at 80% 40%, rgba(255,255,255,0.03), transparent 40%),
+radial-gradient(circle at 50% 80%, rgba(255,255,255,0.04), transparent 35%);
+mix-blend-mode: screen;
+opacity: .55;
+}
+
+
+  /* HERO */
+  .hero {
+    min-height: 100vh;
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    padding: 0;
+    position: relative;
+    overflow: hidden;
+    border-bottom: 2px solid var(--ink);
+  }
+
+  .hero-nav {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 20px 40px;
+    border-bottom: 1px solid rgba(15,14,12,0.15);
+    position: relative; z-index: 10;
+  }
+  .nav-logo { font-size: 11px; font-family: var(--mono); color: var(--ink2); letter-spacing: 0.1em; text-transform: uppercase; }
+  .nav-date { font-size: 11px; font-family: var(--mono); color: var(--ink2); }
+
+  .hero-center {
+    display: flex; flex-direction: column; justify-content: center;
+    padding: 60px 40px;
+    position: relative; z-index: 10;
+  }
+
+  .hero-eyebrow {
+    font-size: 11px; font-family: var(--mono); color: var(--ink2);
+    letter-spacing: 0.15em; text-transform: uppercase;
+    margin-bottom: 24px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .eyebrow-line { width: 40px; height: 1px; background: var(--ink2); }
+
+  .hero-title {
+    font-size: clamp(56px, 9vw, 120px);
+    font-weight: 800;
+    line-height: 0.9;
+    letter-spacing: -0.03em;
+    color: var(--ink);
+    margin-bottom: 40px;
+  }
+  .hero-title em { font-style: normal; color: var(--high); }
+
+  .hero-bottom {
+    display: grid; grid-template-columns: 1fr 1fr 1fr;
+    border-top: 1px solid rgba(15,14,12,0.15);
+    position: relative; z-index: 10;
+  }
+  .hero-stat {
+    padding: 28px 40px;
+    border-right: 1px solid rgba(15,14,12,0.15);
+  }
+  .hero-stat:last-child { border-right: none; }
+  .hs-num {
+    font-size: 52px; font-weight: 800; line-height: 1;
+    letter-spacing: -0.04em; margin-bottom: 4px;
+  }
+  .hs-label { font-size: 11px; font-family: var(--mono); color: var(--ink2); text-transform: uppercase; letter-spacing: 0.08em; }
+
+  /* BIG CIRCLE BG */
+  .hero-circle {
+    position: absolute;
+    width: 70vw; height: 70vw;
+    max-width: 800px; max-height: 800px;
+    border-radius: 50%;
+    border: 1px solid rgba(15,14,12,0.08);
+    right: -20vw; top: 50%;
+    transform: translateY(-50%);
+    pointer-events: none;
+  }
+  .hero-circle-2 {
+    position: absolute;
+    width: 50vw; height: 50vw;
+    max-width: 600px; max-height: 600px;
+    border-radius: 50%;
+    border: 1px solid rgba(15,14,12,0.05);
+    right: -10vw; top: 50%;
+    transform: translateY(-50%);
+    pointer-events: none;
+  }
+
+  /* SECTIONS */
+  .section { padding: 80px 40px; border-bottom: 2px solid var(--ink); }
+  .section-label {
+    font-size: 10px; font-family: var(--mono); color: var(--ink2);
+    text-transform: uppercase; letter-spacing: 0.15em;
+    margin-bottom: 48px;
+    display: flex; align-items: center; gap: 12px;
+  }
+  .section-label::before { content: ''; display: block; width: 24px; height: 1px; background: var(--ink2); }
+
+  /* CONDITIONS */
+  .conditions-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr);
+    gap: 0; border: 1px solid rgba(255,255,255,0.08);
+  }
+  .cond-box {
+    padding: 32px; border-right: 2px solid var(--ink);
+    position: relative; overflow: hidden;
+  }
+  .cond-box:last-child { border-right: none; }
+  .cb-region { font-size: 10px; font-family: var(--mono); color: var(--ink2); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 16px; }
+  .cb-num { font-size: 64px; font-weight: 800; line-height: 1; letter-spacing: -0.04em; margin-bottom: 8px; }
+  .cb-unit { font-size: 14px; font-weight: 400; color: var(--ink2); margin-left: 4px; }
+  .cb-label { font-size: 12px; color: var(--ink2); font-family: var(--mono); }
+  .cb-risk {
+    position: absolute; top: 32px; right: 32px;
+    font-size: 10px; font-weight: 700; font-family: var(--mono);
+    letter-spacing: 0.1em; text-transform: uppercase;
+    padding: 4px 10px; border-radius: 10px;
+  }
+
+  /* MAP SECTION */
+  .map-section { padding: 0; border-bottom: 2px solid var(--ink); }
+  .map-header {
+    display: grid; grid-template-columns: 1fr 1fr;
+    border-bottom: 2px solid var(--ink);
+  }
+  .mh-left {
+    padding: 40px; border-right: 2px solid var(--ink);
+  }
+  .mh-title { font-size: 36px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.1; margin-bottom: 16px; }
+  .mh-desc { font-size: 14px; color: var(--ink2); line-height: 1.7; max-width: 400px; }
+  .mh-right { padding: 40px; display: flex; flex-direction: column; justify-content: space-between; }
+  .map-legend { display: flex; flex-direction: column; gap: 12px; }
+  .ml-row { display: flex; align-items: center; gap: 12px; }
+  .ml-bar { height: 3px; flex: 1; border-radius: 1px; }
+  .ml-label { font-size: 11px; font-family: var(--mono); color: var(--ink2); width: 60px; text-align: right; }
+  .ml-count { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; width: 40px; }
+
+  #map { height: 460px; border-radius: 10px; }
+  .leaflet-container { background: var(--bg2) !important; }
+
+  /* FLIGHT PANEL */
+  .flight-section {
+    display: grid; grid-template-columns: 1fr 400px;
+    border-bottom: 2px solid var(--ink);
+    min-height: 600px;
+  }
+  .flight-list-col { border-right: 2px solid var(--ink); overflow: hidden; }
+  .fl-header {
+    display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr;
+    padding: 16px 24px; border-bottom: 1px solid rgba(15,14,12,0.15);
+    font-size: 10px; font-family: var(--mono); color: var(--ink2);
+    text-transform: uppercase; letter-spacing: 0.08em;
+    background: var(--bg2);
+  }
+  .flight-scroll { max-height: 540px; overflow-y: auto; }
+  .flight-scroll::-webkit-scrollbar { width: 3px; }
+  .flight-scroll::-webkit-scrollbar-thumb { background: var(--ink3); }
+  .fl-row {
+    display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr;
+    padding: 14px 24px; border-bottom: 1px solid rgba(15,14,12,0.08);
+    cursor: pointer; transition: background 0.1s; align-items: center;
+  }
+  .fl-row:hover { background: var(--bg2); }
+  .fl-row.active { background: var(--ink); color: var(--bg); }
+  .fl-row.active .fl-airline { color: rgba(240,237,232,0.6); }
+  .fl-callsign { font-size: 13px; font-weight: 700; letter-spacing: -0.01em; }
+  .fl-airline { font-size: 11px; color: var(--ink2); margin-top: 2px; }
+  .fl-val { font-size: 12px; font-family: var(--mono); color: var(--ink2); }
+  .fl-row.active .fl-val { color: rgba(240,237,232,0.6); }
+  .risk-pill {
+    font-size: 9px; font-weight: 700; font-family: var(--mono);
+    padding: 3px 8px; border-radius: 10px; text-transform: uppercase; letter-spacing: 0.06em;
+    display: inline-block;
+  }
+  .rh { background: var(--high-light); color: var(--high); }
+  .rm { background: var(--med-light); color: var(--med); }
+  .rl { background: var(--low-light); color: var(--low); }
+  .fl-row.active .rh { background: rgba(200,52,26,0.3); color: #ff8870; }
+  .fl-row.active .rm { background: rgba(200,122,26,0.3); color: #ffbc70; }
+  .fl-row.active .rl { background: rgba(26,122,60,0.3); color: #70e898; }
+
+  /* DETAIL PANEL */
+  .detail-col { padding: 0; display: flex; flex-direction: column; }
+  .detail-empty {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    padding: 40px; text-align: center;
+  }
+  .de-hint { font-size: 13px; color: var(--ink3); line-height: 1.7; }
+  .detail-content { display: none; flex-direction: column; height: 100%; }
+  .detail-content.visible { display: flex; }
+  .dc-top { padding: 32px; border-bottom: 1px solid rgba(15,14,12,0.12); }
+  .dc-callsign { font-size: 48px; font-weight: 800; letter-spacing: -0.04em; line-height: 1; margin-bottom: 4px; }
+  .dc-airline { font-size: 13px; color: var(--ink2); margin-bottom: 20px; }
+  .dc-risk-block { padding: 16px 20px; margin-bottom: 0; }
+  .dcr-label { font-size: 10px; font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px; opacity: 0.7; }
+  .dcr-val { font-size: 22px; font-weight: 800; letter-spacing: -0.02em; }
+  .dc-stats { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid rgba(15,14,12,0.12); }
+  .dcs { padding: 20px 24px; border-right: 1px solid rgba(15,14,12,0.12); border-bottom: 1px solid rgba(15,14,12,0.12); }
+  .dcs:nth-child(even) { border-right: none; }
+  .dcs-label { font-size: 9px; font-family: var(--mono); color: var(--ink2); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 6px; }
+  .dcs-val { font-size: 20px; font-weight: 700; letter-spacing: -0.02em; }
+  .dc-suggestion { padding: 24px; flex: 1; background: var(--bg2); }
+  .dcs-head { font-size: 10px; font-family: var(--mono); color: var(--ink2); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px; }
+  .dcs-body { font-size: 13px; color: var(--ink2); line-height: 1.75; }
+  .dcs-body strong { color: var(--ink); font-weight: 600; }
+  .dcs-body .action { color: var(--high); font-weight: 600; }
+  .dcs-body .good { color: var(--low); font-weight: 600; }
+
+  /* ABOUT */
+  .about-section {
+    display: grid; grid-template-columns: 1fr 1fr 1fr;
+    border-bottom: 2px solid var(--ink);
+  }
+  .about-col { padding: 56px 40px; border-right: 2px solid var(--ink); }
+  .about-col:last-child { border-right: none; }
+  .ac-num { font-size: 72px; font-weight: 800; letter-spacing: -0.05em; line-height: 1; color: var(--ink3); margin-bottom: 16px; }
+  .ac-title { font-size: 18px; font-weight: 700; margin-bottom: 12px; }
+  .ac-body { font-size: 13px; color: var(--ink2); line-height: 1.75; }
+
+  /* FOOTER */
+  .footer {
+    padding: 24px 40px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .footer-left { font-size: 11px; font-family: var(--mono); color: var(--ink2); }
+  .footer-right { font-size: 11px; font-family: var(--mono); color: var(--ink3); }
+
+  /* FILTERS */
+  .filter-row {
+    display: flex; gap: 0; border-bottom: 2px solid var(--ink);
+    overflow-x: auto;
+  }
+  .ftab {
+    padding: 14px 24px; font-size: 11px; font-family: var(--mono);
+    cursor: pointer; border-right: 1px solid rgba(15,14,12,0.15);
+    color: var(--ink2); transition: all 0.12s; white-space: nowrap;
+    text-transform: uppercase; letter-spacing: 0.08em;
+  }
+  .ftab:hover { background: var(--bg2); color: var(--ink); }
+  .ftab.active { background: var(--ink); color: var(--bg); }
+
+  @media (max-width: 768px) {
+    .hero-title { font-size: 48px; }
+    .hero-bottom { grid-template-columns: 1fr; }
+    .hero-stat { border-right: none; border-bottom: 1px solid rgba(15,14,12,0.15); }
+    .conditions-grid { grid-template-columns: 1fr; }
+    .cond-box { border-right: none; border-bottom: 2px solid var(--ink); }
+    .map-header { grid-template-columns: 1fr; }
+    .mh-left { border-right: none; border-bottom: 2px solid var(--ink); }
+    .flight-section { grid-template-columns: 1fr; }
+    .flight-list-col { border-right: none; }
+    .about-section { grid-template-columns: 1fr; }
+    .about-col { border-right: none; border-bottom: 2px solid var(--ink); }
+    .hero-nav, .section, .map-section { padding-left: 20px; padding-right: 20px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-circle"></div>
+  <div class="hero-circle-2"></div>
+
+  <nav class="hero-nav">
+    <div class="nav-logo">Contrail Impact Predictor</div>
+    <div class="nav-date">UK Airspace</div>
+  </nav>
+
+  <div class="hero-center">
+    <div class="hero-eyebrow">
+      <span class="eyebrow-line"></span>
+      Aviation's invisible climate problem
+    </div>
+    <h1 class="hero-title">
+      Every flight<br>
+      leaves a <em>mark</em><br>
+      on the sky.
+    </h1>
+  </div>
+
+  <div class="hero-bottom">
+    <div class="hero-stat">
+      <div class="hs-num" id="h-total">42</div>
+      <div class="hs-label">Flights tracked</div>
+    </div>
+    <div class="hero-stat">
+      <div class="hs-num" style="color:var(--high)" id="h-high">0</div>
+      <div class="hs-label">High contrail risk</div>
+    </div>
+    <div class="hero-stat">
+      <div class="hs-num" style="color:var(--low)" id="h-low">0</div>
+      <div class="hs-label">Low risk — contrails dissolve</div>
+    </div>
+  </div>
+</section>
+
+<!-- CONDITIONS -->
+<section class="section">
+  <div class="section-label">Atmospheric conditions · 250hPa cruise altitude</div>
+  <div class="conditions-grid">
+    <div class="cond-box" style="background:var(--med-light)">
+      <div class="cb-region">South UK · London area</div>
+      <div class="cb-num" style="color:#1f2730">−50<span class="cb-unit" style="color:#4a5560">°C</span></div>
+      <div class="cb-label" style="color:#4a5560">64% relative humidity</div>
+      <div class="cb-risk" style="background:var(--med-light);color:var(--med);border:1px solid var(--med)">Medium risk</div>
+    </div>
+    <div class="cond-box" style="background:var(--low-light)">
+      <div class="cb-region">North UK · Manchester area</div>
+      <div class="cb-num" style="color:#1f2730">−47<span class="cb-unit" style="color:#4a5560">°C</span></div>
+      <div class="cb-label" style="color:#4a5560">40% relative humidity</div>
+      <div class="cb-risk" style="background:var(--low-light);color:var(--low);border:1px solid var(--low)">Low risk</div>
+    </div>
+    <div class="cond-box" style="background:var(--bg)">
+      <div class="cb-region">Key insight</div>
+      <div class="cb-num" style="color:var(--ink);font-size:36px;line-height:1.2;letter-spacing:-0.02em">Same<br>altitude.<br>Different<br>impact.</div>
+      <div class="cb-label" style="margin-top:12px">Location determines contrail formation, not just height.</div>
+    </div>
+  </div>
+</section>
+
+<!-- MAP -->
+<section class="map-section">
+  <div class="map-header">
+    <div class="mh-left">
+      <div class="mh-title">42 flights.<br>Real positions.<br>Real risk.</div>
+      <div class="mh-desc">Each dot represents a real flight captured via ADS-B transponder signals. Colour indicates individual contrail risk calculated from actual atmospheric data at that exact location.</div>
+    </div>
+    <div class="mh-right">
+      <div class="section-label" style="margin-bottom:24px">Risk legend</div>
+      <div class="map-legend">
+        <div class="ml-row">
+          <div class="ml-count" style="color:var(--high)" id="map-high">0</div>
+          <div class="ml-bar" style="background:var(--high)"></div>
+          <div class="ml-label" style="color:var(--high)">HIGH</div>
+        </div>
+        <div class="ml-row">
+          <div class="ml-count" style="color:var(--med)" id="map-med">0</div>
+          <div class="ml-bar" style="background:var(--med)"></div>
+          <div class="ml-label" style="color:var(--med)">MEDIUM</div>
+        </div>
+        <div class="ml-row">
+          <div class="ml-count" style="color:var(--low)" id="map-low">0</div>
+          <div class="ml-bar" style="background:var(--low)"></div>
+          <div class="ml-label" style="color:var(--low)">LOW</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div id="map"></div>
+</section>
+
+<!-- FILTERS + FLIGHT LIST -->
+<div class="filter-row">
+  <div class="ftab active" onclick="filterFlights('ALL', this)">All flights</div>
+  <div class="ftab" onclick="filterFlights('HIGH', this)" style="color:var(--high)">High risk</div>
+  <div class="ftab" onclick="filterFlights('MEDIUM', this)" style="color:var(--med)">Medium risk</div>
+  <div class="ftab" onclick="filterFlights('LOW', this)" style="color:var(--low)">Low risk</div>
+  <div class="ftab" onclick="filterFlights('SOUTH', this)">South UK</div>
+  <div class="ftab" onclick="filterFlights('NORTH', this)">North UK</div>
+</div>
+
+<div class="flight-section">
+  <div class="flight-list-col">
+    <div class="fl-header">
+      <span>Flight</span><span>Alt</span><span>Temp</span><span>Humid</span><span>Risk</span>
+    </div>
+    <div class="flight-scroll" id="flightList"></div>
+  </div>
+  <div class="detail-col">
+    <div class="detail-empty" id="detailEmpty">
+      <div class="de-hint">Select a flight from the list or click a dot on the map to see its individual contrail risk assessment and routing recommendation.</div>
+    </div>
+    <div class="detail-content" id="detailContent">
+      <div class="dc-top">
+        <div class="dc-callsign" id="dc-callsign">—</div>
+        <div class="dc-airline" id="dc-airline">—</div>
+        <div class="dc-risk-block" id="dc-risk-block">
+          <div class="dcr-label">Contrail risk</div>
+          <div class="dcr-val" id="dc-risk-val">—</div>
+        </div>
+      </div>
+      <div class="dc-stats">
+        <div class="dcs"><div class="dcs-label">Altitude</div><div class="dcs-val" id="dc-alt">—</div></div>
+        <div class="dcs"><div class="dcs-label">Temperature</div><div class="dcs-val" id="dc-temp">—</div></div>
+        <div class="dcs"><div class="dcs-label">Humidity</div><div class="dcs-val" id="dc-humid">—</div></div>
+        <div class="dcs"><div class="dcs-label">Region</div><div class="dcs-val" id="dc-region">—</div></div>
+      </div>
+      <div class="dc-suggestion">
+        <div class="dcs-head">Routing recommendation</div>
+        <div class="dcs-body" id="dc-suggestion">—</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ABOUT -->
+<section class="about-section">
+  <div class="about-col">
+    <div class="ac-num">01</div>
+    <div class="ac-title">What are contrails?</div>
+    <div class="ac-body">Contrails are ice crystal trails left by aircraft engines at cruise altitude. In certain atmospheric conditions they persist for hours and spread into cirrus cloud — trapping heat and warming the climate well beyond the CO₂ from fuel alone. Some studies suggest contrails cause as much warming as all of aviation's CO₂ combined.</div>
+  </div>
+  <div class="about-col">
+    <div class="ac-num">02</div>
+    <div class="ac-title">Why location matters</div>
+    <div class="ac-body">Today's data shows a striking contrast — flights over Manchester at 27–40% humidity create contrails that dissolve instantly. Identical flights at the same altitude over London at 60–78% humidity leave persistent trails for hours. Same altitude. Very different climate impact. This is what makes contrail avoidance operationally possible.</div>
+  </div>
+  <div class="about-col">
+    <div class="ac-num">03</div>
+    <div class="ac-title">The routing solution</div>
+    <div class="ac-body">Airlines including British Airways and Lufthansa are actively trialling contrail avoidance routing. Small altitude adjustments of 2,000–4,000ft can move a flight out of ice-supersaturated layers entirely. This tool identifies in real time which flights would benefit most — the same decision-support logic used in live operational trials.</div>
+  </div>
+</section>
+
+<footer class="footer">
+  <div class="footer-left">OpenSky Network ADS-B · Open-Meteo atmospheric API</div>
+  <div class="footer-right">Contrail Impact Predictor · Svetlana</div>
+</footer>
+
+<script>
+const FLIGHTS = [
+  { callsign:'NSZ5700', airline:'Norwegian',             alt:10972, temp:-50.0, humid:60, lat:51.5144, lon:0.0587,  region:'SOUTH' },
+  { callsign:'T7IRL',   airline:'Private',               alt:9227,  temp:-49.5, humid:58, lat:50.3051, lon:0.0892,  region:'SOUTH' },
+  { callsign:'JNJ976',  airline:'Private',               alt:13106, temp:-50.0, humid:73, lat:51.7763, lon:0.6851,  region:'SOUTH' },
+  { callsign:'EZY15JL', airline:'easyJet',               alt:8488,  temp:-49.0, humid:53, lat:50.7489, lon:0.5356,  region:'SOUTH' },
+  { callsign:'VVV211',  airline:'Unknown',               alt:8839,  temp:-49.5, humid:78, lat:50.8441, lon:-0.8462, region:'SOUTH' },
+  { callsign:'UAE39',   airline:'Emirates',              alt:9563,  temp:-50.0, humid:67, lat:51.6003, lon:1.2531,  region:'SOUTH' },
+  { callsign:'VVV111',  airline:'Unknown',               alt:8229,  temp:-50.0, humid:67, lat:51.5695, lon:0.1249,  region:'SOUTH' },
+  { callsign:'EZY42UA', airline:'easyJet',               alt:8717,  temp:-49.0, humid:44, lat:50.0142, lon:0.0309,  region:'SOUTH' },
+  { callsign:'DAL203',  airline:'Delta Air Lines',       alt:11582, temp:-50.0, humid:60, lat:51.4969, lon:-1.6742, region:'SOUTH' },
+  { callsign:'AAN141',  airline:'Private',               alt:12496, temp:-50.0, humid:51, lat:51.6097, lon:-1.0544, region:'SOUTH' },
+  { callsign:'EIN404',  airline:'Aer Lingus',            alt:10668, temp:-49.5, humid:64, lat:51.0897, lon:-0.4245, region:'SOUTH' },
+  { callsign:'RYR30WP', airline:'Ryanair',               alt:11277, temp:-49.5, humid:69, lat:50.6955, lon:-0.137,  region:'SOUTH' },
+  { callsign:'EXS41JB', airline:'Jet2',                  alt:11582, temp:-49.5, humid:62, lat:50.7576, lon:-1.3422, region:'SOUTH' },
+  { callsign:'AFR59N',  airline:'Air France',            alt:11887, temp:-49.5, humid:51, lat:51.3787, lon:-0.9611, region:'SOUTH' },
+  { callsign:'RUK1104', airline:'Ryanair UK',            alt:11582, temp:-49.5, humid:56, lat:50.1401, lon:-1.2423, region:'SOUTH' },
+  { callsign:'UAL135',  airline:'United Airlines',       alt:10370, temp:-50.0, humid:58, lat:51.6415, lon:0.0331,  region:'SOUTH' },
+  { callsign:'EXS3LF',  airline:'Jet2',                  alt:9144,  temp:-49.5, humid:67, lat:51.0375, lon:0.527,   region:'SOUTH' },
+  { callsign:'DLH3V',   airline:'Lufthansa',             alt:10363, temp:-50.0, humid:58, lat:51.7949, lon:-1.2615, region:'SOUTH' },
+  { callsign:'SVA253',  airline:'Saudi Arabian Airlines',alt:9136,  temp:-50.0, humid:62, lat:51.3845, lon:0.1015,  region:'SOUTH' },
+  { callsign:'EXS24L',  airline:'Jet2',                  alt:10363, temp:-49.5, humid:73, lat:50.7737, lon:-1.1922, region:'SOUTH' },
+  { callsign:'RYR69QT', airline:'Ryanair',               alt:10942, temp:-49.5, humid:60, lat:50.0249, lon:-0.8683, region:'SOUTH' },
+  { callsign:'CLX87C',  airline:'Cargolux',              alt:11277, temp:-50.0, humid:53, lat:51.2632, lon:1.3589,  region:'SOUTH' },
+  { callsign:'EZY43FJ', airline:'easyJet',               alt:11559, temp:-49.0, humid:44, lat:50.576,  lon:0.994,   region:'SOUTH' },
+  { callsign:'IBE07FP', airline:'Iberia',                alt:9639,  temp:-49.5, humid:58, lat:50.3405, lon:-1.832,  region:'SOUTH' },
+  { callsign:'EZY98RJ', airline:'easyJet',               alt:11590, temp:-49.5, humid:58, lat:51.2339, lon:0.7679,  region:'SOUTH' },
+  { callsign:'TOM46D',  airline:'TUI Airways',           alt:10157, temp:-49.5, humid:51, lat:50.7003, lon:1.0955,  region:'SOUTH' },
+  { callsign:'RYR8G',   airline:'Ryanair',               alt:11582, temp:-50.0, humid:64, lat:51.8009, lon:0.2728,  region:'SOUTH' },
+  { callsign:'N481GV',  airline:'Private',               alt:12192, temp:-49.5, humid:60, lat:50.9445, lon:-0.0143, region:'SOUTH' },
+  { callsign:'RYR88RL', airline:'Ryanair',               alt:11582, temp:-49.5, humid:53, lat:51.4275, lon:1.1658,  region:'SOUTH' },
+  { callsign:'AFR57J',  airline:'Air France',            alt:11887, temp:-50.0, humid:56, lat:51.7295, lon:-1.431,  region:'SOUTH' },
+  { callsign:'AFR25YP', airline:'Air France',            alt:8839,  temp:-49.0, humid:58, lat:50.6219, lon:0.2705,  region:'SOUTH' },
+  { callsign:'DAL221',  airline:'Delta Air Lines',       alt:10668, temp:-47.5, humid:49, lat:53.6427, lon:-2.3687, region:'NORTH' },
+  { callsign:'ACA850',  airline:'Air Canada',            alt:11887, temp:-48.0, humid:62, lat:53.7283, lon:-2.8382, region:'NORTH' },
+  { callsign:'KLM147',  airline:'KLM Royal Dutch',       alt:10972, temp:-47.5, humid:56, lat:53.6878, lon:-2.4715, region:'NORTH' },
+  { callsign:'EXS38KN', airline:'Jet2',                  alt:10652, temp:-47.5, humid:49, lat:53.4193, lon:-2.3802, region:'NORTH' },
+  { callsign:'AAL705',  airline:'American Airlines',     alt:10363, temp:-48.0, humid:69, lat:53.5675, lon:-2.7935, region:'NORTH' },
+  { callsign:'EIN3EG',  airline:'Aer Lingus',            alt:10972, temp:-47.5, humid:27, lat:53.4341, lon:-1.1911, region:'NORTH' },
+  { callsign:'DLH448',  airline:'Lufthansa',             alt:10972, temp:-48.0, humid:40, lat:53.7616, lon:-0.5158, region:'NORTH' },
+  { callsign:'DLH408',  airline:'Lufthansa',             alt:10972, temp:-47.5, humid:38, lat:53.5189, lon:-2.1005, region:'NORTH' },
+  { callsign:'NJU967K', airline:'NetJets',               alt:10896, temp:-47.0, humid:40, lat:52.7365, lon:-2.3176, region:'NORTH' },
+  { callsign:'NJE969D', airline:'NetJets',               alt:12192, temp:-47.0, humid:42, lat:52.5197, lon:-1.579,  region:'NORTH' },
+  { callsign:'RYR4BM',  airline:'Ryanair',               alt:11582, temp:-47.5, humid:36, lat:53.3071, lon:-1.4969, region:'NORTH' },
+];
+
+function getRisk(temp, humid) {
+  if (temp < -45 && humid > 70) return 'HIGH';
+  if (temp < -40 && humid > 40) return 'MEDIUM';
+  return 'LOW';
+}
+
+function getSuggestion(f) {
+  if (f.risk === 'HIGH') return `<span class="action">Action recommended.</span> ${f.callsign} is flying through conditions highly favourable for persistent contrail formation (${f.temp}°C / ${f.humid}% humidity). <strong>Descending 2,000–4,000ft</strong> would likely move this flight out of the ice-supersaturated layer and significantly reduce climate impact.`;
+  if (f.risk === 'MEDIUM') return `Contrails are forming and may persist for minutes to hours. Conditions are borderline at ${f.humid}% humidity. <strong>Monitoring recommended.</strong> If humidity rises above 70%, an altitude adjustment would be beneficial.`;
+  return `<span class="good">No action needed.</span> ${f.callsign} is flying through dry air at ${f.humid}% humidity. Contrails will dissolve almost immediately. <strong>This flight is operating with minimal contrail climate impact.</strong>`;
+}
+
+FLIGHTS.forEach(f => { f.risk = getRisk(f.temp, f.humid); });
+
+let high = FLIGHTS.filter(f => f.risk==='HIGH').length;
+let med = FLIGHTS.filter(f => f.risk==='MEDIUM').length;
+let low = FLIGHTS.filter(f => f.risk==='LOW').length;
+
+document.getElementById('h-total').textContent = FLIGHTS.length;
+document.getElementById('h-high').textContent = high;
+document.getElementById('h-low').textContent = low;
+document.getElementById('map-high').textContent = high;
+document.getElementById('map-med').textContent = med;
+document.getElementById('map-low').textContent = low;
+
+// MAP
+const map = L.map('map', { center: [52.2, -1.2], zoom: 6 });
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  attribution: '© OpenStreetMap © CARTO', maxZoom: 18
+}).addTo(map);
+
+function riskColor(risk) {
+  return { HIGH:'#c8341a', MEDIUM:'#c87a1a', LOW:'#1a7a3c' }[risk];
+}
+
+const markers = {};
+FLIGHTS.forEach(f => {
+  const col = riskColor(f.risk);
+  const icon = L.divIcon({
+    className: '',
+    html: `<div style="width:12px;height:12px;border-radius:50%;background:${col};border:2px solid white;box-shadow:0 1px 4px rgba(0,0,0,0.3);cursor:pointer"></div>`,
+    iconSize:[12,12], iconAnchor:[6,6]
+  });
+  markers[f.callsign] = L.marker([f.lat, f.lon], { icon })
+    .addTo(map)
+    .bindTooltip(`<b>${f.callsign}</b> · ${f.airline}<br>${(f.alt/1000).toFixed(1)}km · ${f.risk} RISK`, { direction:'top' })
+    .on('click', () => showFlight(f));
+});
+
+function showFlight(f) {
+  document.querySelectorAll('.fl-row').forEach(r => r.classList.remove('active'));
+  const row = document.getElementById('row-'+f.callsign);
+  if (row) { row.classList.add('active'); row.scrollIntoView({ block:'nearest' }); }
+
+  document.getElementById('detailEmpty').style.display = 'none';
+  document.getElementById('detailContent').classList.add('visible');
+
+  const col = riskColor(f.risk);
+  const bg = { HIGH:'var(--high-light)', MEDIUM:'var(--med-light)', LOW:'var(--low-light)' }[f.risk];
+
+  document.getElementById('dc-callsign').textContent = f.callsign;
+  document.getElementById('dc-airline').textContent = f.airline;
+  document.getElementById('dc-risk-block').style.background = bg;
+  document.getElementById('dc-risk-val').textContent = f.risk + ' RISK';
+  document.getElementById('dc-risk-val').style.color = col;
+  document.getElementById('dc-alt').textContent = (f.alt/1000).toFixed(1)+'km';
+  document.getElementById('dc-temp').textContent = f.temp+'°C';
+  document.getElementById('dc-humid').textContent = f.humid+'%';
+  document.getElementById('dc-region').textContent = f.region === 'SOUTH' ? 'South UK' : 'North UK';
+  document.getElementById('dc-suggestion').innerHTML = getSuggestion(f);
+}
+
+// FLIGHT LIST
+let currentFilter = 'ALL';
+function filterFlights(filter, el) {
+  currentFilter = filter;
+  document.querySelectorAll('.ftab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  renderList();
+}
+
+function renderList() {
+  const container = document.getElementById('flightList');
+  container.innerHTML = '';
+  const filtered = FLIGHTS.filter(f => {
+    if (currentFilter === 'ALL') return true;
+    if (['HIGH','MEDIUM','LOW'].includes(currentFilter)) return f.risk === currentFilter;
+    return f.region === currentFilter;
+  }).sort((a,b) => b.alt - a.alt);
+
+  const badgeClass = { HIGH:'rh', MEDIUM:'rm', LOW:'rl' };
+  filtered.forEach(f => {
+    const row = document.createElement('div');
+    row.className = 'fl-row';
+    row.id = 'row-'+f.callsign;
+    row.innerHTML = `
+      <div><div class="fl-callsign">${f.callsign}</div><div class="fl-airline">${f.airline}</div></div>
+      <div class="fl-val">${(f.alt/1000).toFixed(1)}km</div>
+      <div class="fl-val">${f.temp}°C</div>
+      <div class="fl-val">${f.humid}%</div>
+      <div><span class="risk-pill ${badgeClass[f.risk]}">${f.risk}</span></div>
+    `;
+    row.addEventListener('click', () => {
+      showFlight(f);
+      map.setView([f.lat, f.lon], 9);
+      markers[f.callsign].openTooltip();
+    });
+    container.appendChild(row);
+  });
+}
+renderList();
+</script>
+</body>
+</html>
