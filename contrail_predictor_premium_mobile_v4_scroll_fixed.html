@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Contrail Impact Predictor</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  :root {
+    --bg:#070b10; --panel:#0b1017; --panel-2:#0f151e; --panel-3:#121923;
+    --line:#26313f; --line-soft:#18212c; --text:#f2f5f8; --muted:#a9b5c4; --dim:#718093;
+    --red:#ff6546; --orange:#f1a225; --green:#5cc779; --cyan:#5db7d8;
+    --red-bg:#351614; --orange-bg:#33230d; --green-bg:#123021;
+    --mono:Arial, Helvetica, sans-serif; --sans:Arial, Helvetica, sans-serif;
+  }
+  html, body { margin:0; min-height:100%; background:radial-gradient(circle at 20% 0%, #101824 0%, var(--bg) 42%); color:var(--text); font-family:var(--sans); }
+  body { padding:22px; letter-spacing:0; }
+  .app { max-width:1860px; margin:0 auto; }
+  .topbar { display:grid; grid-template-columns:1fr auto; gap:24px; align-items:center; margin-bottom:18px; }
+  .brand { display:flex; gap:18px; align-items:center; }
+  .brand-icon { width:58px; height:58px; border:1px solid #e9eef5; border-radius:18px; display:grid; place-items:center; color:#e9eef5; position:relative; }
+  .brand-icon svg { width:44px; height:44px; stroke:currentColor; stroke-width:1.9; fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .brand-icon .plane-fill { fill:currentColor; stroke:none; }
+  .brand-icon .trail { opacity:.78; }
+  h1 { margin:0; font-family:var(--mono); font-size:22px; line-height:1; text-transform:uppercase; letter-spacing:.02em; }
+  .subtitle { margin-top:10px; color:var(--muted); font-family:var(--mono); font-size:14px; }
+  .kpis { display:grid; grid-template-columns:150px 126px 150px 126px 150px; gap:0; align-items:center; }
+  .kpi { min-height:58px; padding:0 20px; border-left:1px solid var(--line); font-family:var(--mono); display:flex; flex-direction:column; justify-content:center; min-width:0; }
+  .kpi:first-child { border-left:0; }
+  .kpi-num { font-size:38px; line-height:.9; font-weight:800; color:var(--text); }
+  .kpi-label { margin-top:11px; font-size:11px; line-height:1.05; color:var(--text); text-transform:uppercase; white-space:nowrap; }
+  .legend { display:grid; gap:10px; padding-left:26px; border-left:1px solid var(--line); font-family:var(--mono); font-size:13px; }
+  .legend span { display:flex; gap:12px; align-items:center; }
+  .dot { width:10px; height:10px; border-radius:50%; display:inline-block; }
+  .grid { display:grid; grid-template-columns:minmax(0, 1fr) minmax(420px, .9fr); gap:20px; min-width:0; }
+  .panel { background:linear-gradient(180deg, rgba(16,23,32,.96), rgba(8,13,19,.96)); border:1px solid var(--line); border-radius:4px; box-shadow:0 28px 60px rgba(0,0,0,.3); overflow:hidden; min-width:0; }
+  .panel-head { min-height:54px; padding:16px 18px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center; font-family:var(--mono); text-transform:uppercase; color:var(--text); font-weight:700; }
+  .pill { border:1px solid #3b4655; border-radius:20px; padding:6px 12px; color:var(--muted); font-size:12px; text-transform:none; font-weight:400; }
+  #map { height:540px; background:#070b10; }
+  .map-wrap { position:relative; }
+  .scale-card { position:absolute; left:18px; bottom:20px; z-index:500; width:235px; padding:18px; border-radius:8px; background:rgba(16,23,32,.88); border:1px solid var(--line-soft); backdrop-filter:blur(10px); font-family:var(--mono); }
+  .scale-title { font-size:13px; font-weight:700; margin-bottom:12px; }
+  .scale { height:14px; border-radius:7px; background:linear-gradient(90deg, var(--green), var(--orange), var(--red)); }
+  .scale-labels { margin-top:10px; display:flex; justify-content:space-between; font-size:12px; color:var(--text); }
+  .detail { padding:22px; min-height:540px; min-width:0; overflow:hidden; }
+  .select-label { color:#8da0b4; font-family:var(--mono); text-transform:uppercase; font-size:14px; margin-bottom:24px; }
+  .flight-title { display:flex; gap:14px; align-items:center; flex-wrap:wrap; }
+  .callsign { font-size:38px; line-height:1; font-weight:800; letter-spacing:-.02em; }
+  .risk-chip { font-family:var(--mono); border:1px solid currentColor; border-radius:7px; padding:7px 12px; font-size:14px; font-weight:800; text-transform:uppercase; }
+  .airline { margin-top:9px; color:var(--muted); font-family:var(--mono); font-size:15px; }
+  .route { margin-top:10px; color:var(--text); font-family:var(--mono); font-size:15px; }
+  .metrics { margin-top:22px; border:1px solid var(--line); border-radius:6px; display:grid; grid-template-columns:repeat(4, 1fr); overflow:hidden; }
+  .metric { min-height:118px; padding:22px 18px; border-left:1px solid var(--line-soft); }
+  .metric:first-child { border-left:0; }
+  .metric-label { color:#8da0b4; font-family:var(--mono); text-transform:uppercase; font-size:12px; margin-bottom:16px; }
+  .metric-value { font-size:28px; line-height:1; font-weight:800; }
+  .metric-sub { margin-top:10px; color:var(--muted); font-family:var(--mono); font-size:13px; }
+  .insights { margin-top:12px; display:grid; grid-template-columns:1.15fr .95fr; gap:12px; }
+  .insight { min-height:96px; border:1px solid var(--line); border-radius:6px; padding:18px; display:grid; grid-template-columns:58px minmax(0,1fr); gap:16px; align-items:start; background:rgba(16,23,32,.72); }
+  .insight-icon { width:46px; height:46px; border-radius:50%; display:grid; place-items:center; background:rgba(92,199,121,.12); color:var(--green); font-family:var(--mono); font-size:22px; }
+  .insight-title { color:#8da0b4; font-family:var(--mono); text-transform:uppercase; font-size:12px; font-weight:800; margin:0 0 8px; }
+  .insight-copy { color:var(--muted); font-family:var(--mono); font-size:14px; line-height:1.45; }
+  .flight-details { margin-top:12px; border:1px solid var(--line); border-radius:6px; padding:18px; min-width:0; overflow:hidden; }
+  .details-title { font-family:var(--mono); text-transform:uppercase; font-weight:800; margin-bottom:16px; }
+  .details-grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:0 28px; min-width:0; }
+  .detail-row { display:grid; grid-template-columns:minmax(86px, 34%) minmax(0, 1fr); gap:10px; padding:6px 0; font-family:var(--mono); font-size:14px; align-items:start; min-width:0; }
+  .detail-row span { min-width:0; }
+  .detail-row span:first-child { color:var(--text); }
+  .detail-row span:last-child { color:var(--text); font-weight:700; overflow-wrap:break-word; text-align:left; }
+  .empty { color:var(--muted); font-family:var(--mono); border:1px dashed var(--line); border-radius:6px; padding:42px; line-height:1.6; }
+  .table-panel { margin-top:10px; }
+  .table-top { min-height:52px; display:grid; grid-template-columns:220px 1fr 460px; align-items:center; border-bottom:1px solid var(--line); }
+  .table-title { padding-left:18px; font-family:var(--mono); font-weight:800; text-transform:uppercase; }
+  .tabs { display:flex; height:52px; align-items:stretch; }
+  .tab { border:0; border-bottom:2px solid transparent; background:transparent; color:var(--muted); padding:0 25px; font-family:var(--mono); text-transform:uppercase; cursor:pointer; }
+  .tab.active { color:var(--text); border-bottom-color:var(--cyan); }
+  .search { padding:0 14px; }
+  .search input { width:100%; height:36px; border:1px solid var(--line); border-radius:6px; background:#0a0f16; color:var(--text); padding:0 14px; font-family:var(--mono); outline:none; }
+  .table-head, .table-row { display:grid; grid-template-columns:1fr 1.15fr .8fr .9fr .9fr .8fr; gap:18px; align-items:center; padding:0 36px; }
+  .table-head { height:42px; color:#7f91a6; font-family:var(--mono); text-transform:uppercase; font-size:13px; border-bottom:1px solid var(--line); }
+  .table-row { min-height:40px; border-bottom:1px solid var(--line-soft); color:var(--muted); font-family:var(--mono); font-size:14px; cursor:pointer; }
+  .table-row:hover, .table-row.selected { background:#111923; }
+  .table-row.selected { box-shadow:inset 3px 0 var(--cyan); }
+  .table-row strong { color:var(--text); }
+  .badge { display:inline-flex; justify-content:center; min-width:70px; border-radius:14px; padding:5px 10px; font-size:12px; font-weight:800; color:#fff; text-transform:uppercase; }
+  .badge.high { background:linear-gradient(#ff735d,#b83f31); } .badge.medium { background:linear-gradient(#f4b038,#a56c16); } .badge.low { background:linear-gradient(#62c97b,#2c7d52); }
+  .leaflet-control-zoom a { background:#f5f7fa !important; color:#111 !important; border-color:#cfd5de !important; }
+  .leaflet-control-attribution { background:rgba(0,0,0,.35) !important; color:#8793a2 !important; }
+  @media (max-width:1100px) { body { padding:14px; } .topbar, .grid { grid-template-columns:1fr; } .kpis { grid-template-columns:repeat(4, minmax(110px,1fr)); } .legend { grid-column:1/-1; border-left:0; padding-left:0; display:flex; } .table-top { grid-template-columns:1fr; } .search { padding:10px 14px; } }
+  
+@media (max-width:760px) {
+  html, body {
+    margin:0;
+    padding:0;
+    overflow-x:hidden;
+    background:radial-gradient(circle at 20% 0%, #101824 0%, var(--bg) 42%);
+  }
+
+  body { padding:0; }
+
+  .app {
+    padding:14px;
+  }
+
+  .topbar {
+    grid-template-columns:1fr;
+    gap:20px;
+  }
+
+  .brand {
+    align-items:center;
+    gap:16px;
+  }
+
+  .brand-icon {
+    width:60px;
+    height:60px;
+  }
+
+  h1 {
+    font-size:28px;
+    line-height:1;
+    letter-spacing:0.02em;
+  }
+
+  .subtitle {
+    font-size:14px;
+    margin-top:8px;
+  }
+
+  /* PREMIUM KPI LAYOUT */
+  .kpis {
+    grid-template-columns:repeat(2, 1fr);
+    gap:18px;
+  }
+
+  .kpi {
+    padding:16px;
+    border:1px solid var(--line);
+    border-radius:10px;
+    background:rgba(16,23,32,.75);
+    min-height:110px;
+  }
+
+  .kpi:first-child {
+    border-left:1px solid var(--line);
+  }
+
+  .kpi-num {
+    font-size:42px;
+  }
+
+  .kpi-label {
+    font-size:12px;
+    margin-top:10px;
+    white-space:normal;
+  }
+
+  .legend {
+    grid-column:span 2;
+    border:none;
+    padding:0;
+    display:flex;
+    justify-content:space-between;
+    margin-top:4px;
+  }
+
+  .grid {
+    grid-template-columns:1fr;
+    gap:18px;
+  }
+
+  #map {
+    height:390px;
+  }
+
+  .scale-card {
+    width:180px;
+    left:14px;
+    bottom:14px;
+    padding:12px;
+    border-radius:10px;
+  }
+
+  .scale-title {
+    font-size:11px;
+  }
+
+  .scale {
+    height:8px;
+  }
+
+  .scale-labels {
+    font-size:10px;
+  }
+
+  .detail {
+    padding:18px;
+    min-height:auto;
+  }
+
+  .callsign {
+    font-size:32px;
+  }
+
+  /* Better metrics */
+  .metrics {
+    grid-template-columns:repeat(2, 1fr);
+  }
+
+  .metric {
+    min-height:100px;
+    border-left:none;
+    border-top:1px solid var(--line-soft);
+  }
+
+  .metric:nth-child(1),
+  .metric:nth-child(2) {
+    border-top:none;
+  }
+
+  .insights,
+  .details-grid {
+    grid-template-columns:1fr;
+  }
+
+  .table-top {
+    grid-template-columns:1fr;
+  }
+
+  .tabs {
+    overflow-x:auto;
+    padding:8px;
+  }
+
+  .tab {
+    white-space:nowrap;
+    padding:10px 14px;
+  }
+
+  .search {
+    padding:12px;
+  }
+
+  .table-head {
+    display:none;
+  }
+
+  .table-row {
+    grid-template-columns:1fr auto;
+    padding:14px;
+    gap:14px;
+  }
+
+  .hide-sm {
+    display:none;
+  }
+}
+
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="brand"><div class="brand-icon" aria-hidden="true"><svg viewBox="0 0 64 64"><path d="M18 45h27a10 10 0 0 0 1.6-19.9A14 14 0 0 0 20.8 21 10.5 10.5 0 0 0 18 45Z"></path><path class="trail" d="M8 30h15"></path><path class="trail" d="M6 35h18"></path><path class="trail" d="M10 40h13"></path><path class="plane-fill" d="M44.5 32.6 24.2 24.8c-1.3-.5-2.6.7-2.1 2l2.4 5.2-2.4 5.2c-.5 1.3.8 2.5 2.1 2l20.3-7.8c.8-.3.8-1.5 0-1.8Zm-15.4 1.1h-5.5l1.2-1.7-1.2-1.7h5.5l2.8 1.7-2.8 1.7Z"></path><path d="M27.4 25.8 20.8 18"></path><path d="M27.4 38.2 20.8 46"></path></svg></div><div><h1>Contrail Impact Predictor</h1><div class="subtitle">Real ADS-B data + atmospheric conditions</div></div></div>
+    <div class="kpis"><div class="kpi"><div class="kpi-num" id="totalCount">-</div><div class="kpi-label">Flights tracked</div></div><div class="kpi"><div class="kpi-num" id="highCount" style="color:var(--red)">-</div><div class="kpi-label" style="color:var(--red)">High risk</div></div><div class="kpi"><div class="kpi-num" id="medCount" style="color:var(--orange)">-</div><div class="kpi-label" style="color:var(--orange)">Medium risk</div></div><div class="kpi"><div class="kpi-num" id="lowCount" style="color:var(--green)">-</div><div class="kpi-label" style="color:var(--green)">Low risk</div></div><div class="legend"><span><i class="dot" style="background:var(--red)"></i>High</span><span><i class="dot" style="background:var(--orange)"></i>Medium</span><span><i class="dot" style="background:var(--green)"></i>Low</span></div></div>
+  </header>
+  <section class="grid">
+    <div class="panel map-wrap"><div class="panel-head"><span>Live airspace over UK</span><span class="pill">250hPa Cruise Altitude</span></div><div id="map"></div><div class="scale-card"><div class="scale-title">Contrail Formation Potential</div><div class="scale"></div><div class="scale-labels"><span>Low</span><span>Medium</span><span>High</span></div></div></div>
+    <aside class="panel"><div class="detail" id="selBody"><div class="select-label">Select a flight</div><div class="empty">Choose a marker or table row to view altitude, atmospheric readings, contrail potential and routing insight.</div></div></aside>
+  </section>
+  <section class="panel table-panel"><div class="table-top"><div class="table-title">All flights (<span id="tableTotal">-</span>)</div><div class="tabs"><button class="tab active" onclick="filterTable('ALL', this)">All</button><button class="tab" style="color:var(--red)" onclick="filterTable('HIGH', this)">High risk</button><button class="tab" style="color:var(--orange)" onclick="filterTable('MEDIUM', this)">Medium risk</button><button class="tab" style="color:var(--green)" onclick="filterTable('LOW', this)">Low risk</button></div><div class="search"><input id="searchBox" placeholder="Search flight, callsign, airline..." oninput="renderTable()"></div></div><div class="table-head"><span>Flight</span><span>Airline</span><span>Region</span><span>Altitude</span><span>Temp</span><span>Risk</span></div><div id="tableRows"></div></section>
+</div>
+<script>
+const FLIGHTS = [
+    { callsign:'NSZ5700', airline:'Norwegian',             alt:10972, temp:-50.0, humid:60, lat:51.5144, lon:0.0587,  region:'SOUTH' },
+  { callsign:'T7IRL',   airline:'Private',               alt:9227,  temp:-49.5, humid:58, lat:50.3051, lon:0.0892,  region:'SOUTH' },
+  { callsign:'JNJ976',  airline:'Private',               alt:13106, temp:-50.0, humid:73, lat:51.7763, lon:0.6851,  region:'SOUTH' },
+  { callsign:'EZY15JL', airline:'easyJet',               alt:8488,  temp:-49.0, humid:53, lat:50.7489, lon:0.5356,  region:'SOUTH' },
+  { callsign:'VVV211',  airline:'Unknown',               alt:8839,  temp:-49.5, humid:78, lat:50.8441, lon:-0.8462, region:'SOUTH' },
+  { callsign:'UAE39',   airline:'Emirates',              alt:9563,  temp:-50.0, humid:67, lat:51.6003, lon:1.2531,  region:'SOUTH' },
+  { callsign:'VVV111',  airline:'Unknown',               alt:8229,  temp:-50.0, humid:67, lat:51.5695, lon:0.1249,  region:'SOUTH' },
+  { callsign:'EZY42UA', airline:'easyJet',               alt:8717,  temp:-49.0, humid:44, lat:50.0142, lon:0.0309,  region:'SOUTH' },
+  { callsign:'DAL203',  airline:'Delta Air Lines',       alt:11582, temp:-50.0, humid:60, lat:51.4969, lon:-1.6742, region:'SOUTH' },
+  { callsign:'AAN141',  airline:'Private',               alt:12496, temp:-50.0, humid:51, lat:51.6097, lon:-1.0544, region:'SOUTH' },
+  { callsign:'EIN404',  airline:'Aer Lingus',            alt:10668, temp:-49.5, humid:64, lat:51.0897, lon:-0.4245, region:'SOUTH' },
+  { callsign:'RYR30WP', airline:'Ryanair',               alt:11277, temp:-49.5, humid:69, lat:50.6955, lon:-0.137,  region:'SOUTH' },
+  { callsign:'EXS41JB', airline:'Jet2',                  alt:11582, temp:-49.5, humid:62, lat:50.7576, lon:-1.3422, region:'SOUTH' },
+  { callsign:'AFR59N',  airline:'Air France',            alt:11887, temp:-49.5, humid:51, lat:51.3787, lon:-0.9611, region:'SOUTH' },
+  { callsign:'RUK1104', airline:'Ryanair UK',            alt:11582, temp:-49.5, humid:56, lat:50.1401, lon:-1.2423, region:'SOUTH' },
+  { callsign:'UAL135',  airline:'United Airlines',       alt:10370, temp:-50.0, humid:58, lat:51.6415, lon:0.0331,  region:'SOUTH' },
+  { callsign:'EXS3LF',  airline:'Jet2',                  alt:9144,  temp:-49.5, humid:67, lat:51.0375, lon:0.527,   region:'SOUTH' },
+  { callsign:'DLH3V',   airline:'Lufthansa',             alt:10363, temp:-50.0, humid:58, lat:51.7949, lon:-1.2615, region:'SOUTH' },
+  { callsign:'SVA253',  airline:'Saudi Arabian Airlines',alt:9136,  temp:-50.0, humid:62, lat:51.3845, lon:0.1015,  region:'SOUTH' },
+  { callsign:'EXS24L',  airline:'Jet2',                  alt:10363, temp:-49.5, humid:73, lat:50.7737, lon:-1.1922, region:'SOUTH' },
+  { callsign:'RYR69QT', airline:'Ryanair',               alt:10942, temp:-49.5, humid:60, lat:50.0249, lon:-0.8683, region:'SOUTH' },
+  { callsign:'CLX87C',  airline:'Cargolux',              alt:11277, temp:-50.0, humid:53, lat:51.2632, lon:1.3589,  region:'SOUTH' },
+  { callsign:'EZY43FJ', airline:'easyJet',               alt:11559, temp:-49.0, humid:44, lat:50.576,  lon:0.994,   region:'SOUTH' },
+  { callsign:'IBE07FP', airline:'Iberia',                alt:9639,  temp:-49.5, humid:58, lat:50.3405, lon:-1.832,  region:'SOUTH' },
+  { callsign:'EZY98RJ', airline:'easyJet',               alt:11590, temp:-49.5, humid:58, lat:51.2339, lon:0.7679,  region:'SOUTH' },
+  { callsign:'TOM46D',  airline:'TUI Airways',           alt:10157, temp:-49.5, humid:51, lat:50.7003, lon:1.0955,  region:'SOUTH' },
+  { callsign:'RYR8G',   airline:'Ryanair',               alt:11582, temp:-50.0, humid:64, lat:51.8009, lon:0.2728,  region:'SOUTH' },
+  { callsign:'N481GV',  airline:'Private',               alt:12192, temp:-49.5, humid:60, lat:50.9445, lon:-0.0143, region:'SOUTH' },
+  { callsign:'RYR88RL', airline:'Ryanair',               alt:11582, temp:-49.5, humid:53, lat:51.4275, lon:1.1658,  region:'SOUTH' },
+  { callsign:'AFR57J',  airline:'Air France',            alt:11887, temp:-50.0, humid:56, lat:51.7295, lon:-1.431,  region:'SOUTH' },
+  { callsign:'AFR25YP', airline:'Air France',            alt:8839,  temp:-49.0, humid:58, lat:50.6219, lon:0.2705,  region:'SOUTH' },
+  { callsign:'DAL221',  airline:'Delta Air Lines',       alt:10668, temp:-47.5, humid:49, lat:53.6427, lon:-2.3687, region:'NORTH' },
+  { callsign:'ACA850',  airline:'Air Canada',            alt:11887, temp:-48.0, humid:62, lat:53.7283, lon:-2.8382, region:'NORTH' },
+  { callsign:'KLM147',  airline:'KLM Royal Dutch',       alt:10972, temp:-47.5, humid:56, lat:53.6878, lon:-2.4715, region:'NORTH' },
+  { callsign:'EXS38KN', airline:'Jet2',                  alt:10652, temp:-47.5, humid:49, lat:53.4193, lon:-2.3802, region:'NORTH' },
+  { callsign:'AAL705',  airline:'American Airlines',     alt:10363, temp:-48.0, humid:69, lat:53.5675, lon:-2.7935, region:'NORTH' },
+  { callsign:'EIN3EG',  airline:'Aer Lingus',            alt:10972, temp:-47.5, humid:27, lat:53.4341, lon:-1.1911, region:'NORTH' },
+  { callsign:'DLH448',  airline:'Lufthansa',             alt:10972, temp:-48.0, humid:40, lat:53.7616, lon:-0.5158, region:'NORTH' },
+  { callsign:'DLH408',  airline:'Lufthansa',             alt:10972, temp:-47.5, humid:38, lat:53.5189, lon:-2.1005, region:'NORTH' },
+  { callsign:'NJU967K', airline:'NetJets',               alt:10896, temp:-47.0, humid:40, lat:52.7365, lon:-2.3176, region:'NORTH' },
+  { callsign:'NJE969D', airline:'NetJets',               alt:12192, temp:-47.0, humid:42, lat:52.5197, lon:-1.579,  region:'NORTH' },
+  { callsign:'RYR4BM',  airline:'Ryanair',               alt:11582, temp:-47.5, humid:36, lat:53.3071, lon:-1.4969, region:'NORTH' },
+];
+function getRisk(temp, humid) { if (temp < -45 && humid > 70) return 'HIGH'; if (temp < -40 && humid > 40) return 'MEDIUM'; return 'LOW'; }
+function riskColor(risk) { return { HIGH:'#ff6546', MEDIUM:'#f1a225', LOW:'#5cc779' }[risk]; }
+function riskClass(risk) { return risk.toLowerCase(); }
+function potentialText(risk) { return risk === 'HIGH' ? 'Persistent contrails likely' : risk === 'MEDIUM' ? 'Contrails possible' : 'Low persistence expected'; }
+function altitudeBand(alt) { return 'FL' + Math.round(alt / 30.48 / 10) * 10; }
+function routingInsight(f) { if (f.risk === 'HIGH') return 'Consider descending 2,000-4,000 ft to reduce contrail formation potential.'; if (f.risk === 'MEDIUM') return 'Consider descending 1,000-2,000 ft if the humid layer persists.'; return 'No altitude change indicated from the current atmospheric readings.'; }
+function pseudoSpeed(f) { var seed = Array.from(f.callsign).reduce((a,c)=>a+c.charCodeAt(0),0); return 740 + (seed % 190); }
+function pseudoTrack(f) { var n = Math.round(((f.lon + 6) * 37 + (f.lat - 49) * 51) % 360); return n < 0 ? n + 360 : n; }
+FLIGHTS.forEach(function(f){ f.risk = getRisk(f.temp, f.humid); });
+var high = FLIGHTS.filter(f=>f.risk==='HIGH').length, med = FLIGHTS.filter(f=>f.risk==='MEDIUM').length, low = FLIGHTS.filter(f=>f.risk==='LOW').length;
+document.getElementById('totalCount').textContent = FLIGHTS.length; document.getElementById('tableTotal').textContent = FLIGHTS.length; document.getElementById('highCount').textContent = high; document.getElementById('medCount').textContent = med; document.getElementById('lowCount').textContent = low;
+const map = L.map('map', { center:[52.25,-0.9], zoom:6, scrollWheelZoom:true });
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { attribution:'&copy; OpenStreetMap contributors', maxZoom:18 }).addTo(map);
+const markers = {};
+FLIGHTS.forEach(function(f){ var col = riskColor(f.risk); var icon = L.divIcon({ className:'', html:'<div style="width:14px;height:14px;border-radius:50%;background:'+col+';border:1px solid rgba(255,255,255,.72);box-shadow:0 0 12px '+col+'88"></div>', iconSize:[14,14], iconAnchor:[7,7] }); markers[f.callsign] = L.marker([f.lat, f.lon], { icon:icon }).addTo(map).bindTooltip('<b>'+f.callsign+'</b><br>'+f.airline+'<br>'+f.risk+' risk', { direction:'top' }).on('click', function(){ showFlight(f, true); }); });
+function showFlight(f, shouldScroll = false) { document.querySelectorAll('.table-row').forEach(r=>r.classList.remove('selected')); var row = document.getElementById('row-' + f.callsign); if (row) { 
+      row.classList.add('selected'); 
+      if (shouldScroll) {
+        row.scrollIntoView({ block:'nearest' });
+      }
+    } var col = riskColor(f.risk); document.getElementById('selBody').innerHTML = '<div class="select-label">Selected flight</div><div class="flight-title"><div class="callsign">'+f.callsign+'</div><div class="risk-chip" style="color:'+col+'">'+f.risk+' risk</div></div><div class="airline">'+f.airline+'</div><div class="route">'+(f.region === 'SOUTH' ? 'South UK airspace' : 'North UK airspace')+' - live atmospheric sample</div><div class="metrics"><div class="metric"><div class="metric-label">Altitude</div><div class="metric-value">'+(f.alt/1000).toFixed(1)+'<sup style="font-size:13px"> km</sup></div><div class="metric-sub">'+altitudeBand(f.alt)+'</div></div><div class="metric"><div class="metric-label">Temperature</div><div class="metric-value">'+f.temp+' C</div></div><div class="metric"><div class="metric-label">Relative humidity</div><div class="metric-value">'+f.humid+'%</div></div><div class="metric"><div class="metric-label">Contrail potential</div><div class="metric-value" style="color:'+col+';font-family:var(--mono)">'+(f.risk.charAt(0)+f.risk.slice(1).toLowerCase())+'</div><div class="metric-sub">'+potentialText(f.risk)+'</div></div></div><div class="insights"><div class="insight"><div class="insight-icon">↯</div><div><div class="insight-title">Routing insight</div><div class="insight-copy">'+routingInsight(f)+'</div></div></div><div class="insight"><div class="insight-icon">☁</div><div><div class="insight-title">Environment</div><div class="insight-copy">'+(f.risk==='LOW'?'Low persistence conditions present':'Ice supersaturated conditions possible')+'</div></div></div></div><div class="flight-details"><div class="details-title">Flight details</div><div class="details-grid"><div><div class="detail-row"><span>Callsign</span><span>'+f.callsign+'</span></div><div class="detail-row"><span>Airline</span><span>'+f.airline+'</span></div><div class="detail-row"><span>Speed</span><span>'+pseudoSpeed(f)+' km/h</span></div><div class="detail-row"><span>Track</span><span>'+pseudoTrack(f)+' deg</span></div></div><div><div class="detail-row"><span>Latitude</span><span>'+f.lat.toFixed(4)+' N</span></div><div class="detail-row"><span>Longitude</span><span>'+Math.abs(f.lon).toFixed(4)+' '+(f.lon<0?'W':'E')+'</span></div><div class="detail-row"><span>Data source</span><span>ADS-B</span></div><div class="detail-row"><span>Region</span><span>'+f.region+'</span></div></div></div></div>'; }
+var currentFilter = 'ALL';
+function filterTable(filter, button) { currentFilter = filter; document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active')); button.classList.add('active'); renderTable(); }
+function renderTable() { var q = (document.getElementById('searchBox').value || '').toLowerCase(); var rows = FLIGHTS.filter(function(f){ var filterOk = currentFilter === 'ALL' || f.risk === currentFilter; var textOk = !q || (f.callsign + ' ' + f.airline + ' ' + f.region).toLowerCase().includes(q); return filterOk && textOk; }).sort((a,b)=>b.alt-a.alt); var body = document.getElementById('tableRows'); body.innerHTML = ''; rows.forEach(function(f){ var row = document.createElement('div'); row.className = 'table-row'; row.id = 'row-' + f.callsign; row.innerHTML = '<span><strong>'+f.callsign+'</strong></span><span>'+f.airline+'</span><span class="hide-sm">'+(f.region==='SOUTH'?'South UK':'North UK')+'</span><span class="hide-sm">'+(f.alt/1000).toFixed(1)+' km</span><span class="hide-sm">'+f.temp+' C / '+f.humid+'%</span><span><span class="badge '+riskClass(f.risk)+'">'+f.risk+'</span></span>'; row.addEventListener('click', function(){ showFlight(f, true); map.setView([f.lat, f.lon], 9); markers[f.callsign].openTooltip(); }); body.appendChild(row); }); }
+renderTable(); showFlight(FLIGHTS.find(f=>f.risk==='HIGH') || FLIGHTS[0], false);
+</script>
+</body>
+</html>
